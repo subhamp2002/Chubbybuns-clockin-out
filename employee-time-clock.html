@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Employee Time Clock</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #4a6da7;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .auth-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .clock-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            display: none;
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4a6da7;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #3a5a8f;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .status.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .status.success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status.warning {
+            background-color: #fff8e1;
+            color: #ff8f00;
+        }
+        #clock {
+            font-size: 2rem;
+            margin: 20px 0;
+        }
+        .history-entry {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .in {
+            border-left: 4px solid #4caf50;
+        }
+        .out {
+            border-left: 4px solid #f44336;
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Restaurant Employee Time Clock</h1>
+        </header>
+        
+        <div class="auth-container" id="login-section">
+            <h2>Employee Login</h2>
+            <input type="email" id="email" placeholder="Enter your email" required>
+            <input type="password" id="password" placeholder="Enter your password" required>
+            <button id="login-btn">Login</button>
+            <div id="login-status" class="status"></div>
+        </div>
+        
+        <div class="clock-container" id="clock-section">
+            <h2>Welcome, <span id="employee-name">Employee</span></h2>
+            <div id="clock"></div>
+            <div id="location-status" class="status"></div>
+            <button id="clock-in-btn">Clock In</button>
+            <button id="clock-out-btn">Clock Out</button>
+            <button id="logout-btn">Logout</button>
+            
+            <div class="history" id="history-container">
+                <h3>Recent Activity</h3>
+                <div id="history-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Demo data - In a real application, this would be stored on a server
+        const employees = [
+            { email: "employee1@example.com", password: "password1", name: "John Doe" },
+            { email: "employee2@example.com", password: "password2", name: "Jane Smith" },
+            { email: "manager@example.com", password: "manager123", name: "Restaurant Manager" }
+        ];
+
+        // Restaurant location (replace with your actual restaurant coordinates)
+        const restaurantLocation = {
+            latitude: 40.7128,  // Example: New York City coordinates
+            longitude: -74.0060
+        };
+
+        // Maximum distance in meters for clock-in (300 meters ≈ 1000 feet)
+        const maxClockInDistance = 300;
+        
+        // Current user
+        let currentUser = null;
+        let clockHistory = [];
+        
+        // DOM elements
+        const loginSection = document.getElementById('login-section');
+        const clockSection = document.getElementById('clock-section');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('login-btn');
+        const loginStatus = document.getElementById('login-status');
+        const employeeName = document.getElementById('employee-name');
+        const clockDisplay = document.getElementById('clock');
+        const locationStatus = document.getElementById('location-status');
+        const clockInBtn = document.getElementById('clock-in-btn');
+        const clockOutBtn = document.getElementById('clock-out-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const historyList = document.getElementById('history-list');
+        
+        // Update clock
+        function updateClock() {
+            const now = new Date();
+            clockDisplay.textContent = now.toLocaleTimeString();
+        }
+        
+        // Calculate distance between two coordinates in meters
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            
+            return R * c;
+        }
+        
+        // Check if user is within range of restaurant
+        function checkLocation(position) {
+            const userLat = position.coords.latitude;
+            const userLon = position.coords.longitude;
+            const distance = calculateDistance(
+                userLat, userLon,
+                restaurantLocation.latitude, restaurantLocation.longitude
+            );
+            
+            if (distance <= maxClockInDistance) {
+                locationStatus.textContent = `You are within range of the restaurant (${Math.round(distance)} meters).`;
+                locationStatus.className = 'status success';
+                clockInBtn.disabled = false;
+                clockOutBtn.disabled = false;
+            } else {
+                locationStatus.textContent = `You are not at the restaurant. Distance: ${Math.round(distance)} meters.`;
+                locationStatus.className = 'status warning';
+                clockInBtn.disabled = true;
+                clockOutBtn.disabled = true;
+            }
+        }
+        
+        // Handle location errors
+        function locationError(error) {
+            let message;
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = "Location access denied. Please enable location services to clock in/out.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    message = "Location request timed out.";
+                    break;
+                default:
+                    message = "An unknown error occurred with location services.";
+                    break;
+            }
+            locationStatus.textContent = message;
+            locationStatus.className = 'status error';
+            clockInBtn.disabled = true;
+            clockOutBtn.disabled = true;
+        }
+        
+        // Get current location
+        function getLocation() {
+            if (navigator.geolocation) {
+                locationStatus.textContent = "Checking your location...";
+                locationStatus.className = 'status';
+                navigator.geolocation.getCurrentPosition(checkLocation, locationError);
+            } else {
+                locationStatus.textContent = "Geolocation is not supported by this browser.";
+                locationStatus.className = 'status error';
+                clockInBtn.disabled = true;
+                clockOutBtn.disabled = true;
+            }
+        }
+        
+        // Handle login
+        loginBtn.addEventListener('click', function() {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            
+            // Find employee
+            const employee = employees.find(emp => emp.email === email && emp.password === password);
+            
+            if (employee) {
+                currentUser = employee;
+                employeeName.textContent = employee.name;
+                loginStatus.textContent = "";
+                
+                // Show clock section, hide login
+                loginSection.style.display = 'none';
+                clockSection.style.display = 'block';
+                
+                // Start clock and check location
+                updateClock();
+                setInterval(updateClock, 1000);
+                getLocation();
+                
+                // Reset inputs
+                emailInput.value = '';
+                passwordInput.value = '';
+                
+                // Load mock history (in a real app, this would come from a database)
+                updateHistory();
+            } else {
+                loginStatus.textContent = "Invalid email or password.";
+                loginStatus.className = 'status error';
+            }
+        });
+        
+        // Handle clock in
+        clockInBtn.addEventListener('click', function() {
+            const now = new Date();
+            const entry = {
+                type: 'in',
+                time: now,
+                timestamp: now.toLocaleString()
+            };
+            
+            clockHistory.unshift(entry);
+            updateHistory();
+            
+            locationStatus.textContent = "You have successfully clocked in!";
+            locationStatus.className = 'status success';
+            
+            // In a real app, this would send data to a server
+        });
+        
+        // Handle clock out
+        clockOutBtn.addEventListener('click', function() {
+            const now = new Date();
+            const entry = {
+                type: 'out',
+                time: now,
+                timestamp: now.toLocaleString()
+            };
+            
+            clockHistory.unshift(entry);
+            updateHistory();
+            
+            locationStatus.textContent = "You have successfully clocked out!";
+            locationStatus.className = 'status success';
+            
+            // In a real app, this would send data to a server
+        });
+        
+        // Handle logout
+        logoutBtn.addEventListener('click', function() {
+            currentUser = null;
+            loginSection.style.display = 'block';
+            clockSection.style.display = 'none';
+            clockHistory = [];
+        });
+        
+        // Update history display
+        function updateHistory() {
+            historyList.innerHTML = '';
+            
+            if (clockHistory.length === 0) {
+                historyList.innerHTML = '<p>No recent activity</p>';
+                return;
+            }
+            
+            // Show latest 5 entries
+            const recentEntries = clockHistory.slice(0, 5);
+            
+            recentEntries.forEach(entry => {
+                const div = document.createElement('div');
+                div.className = `history-entry ${entry.type}`;
+                div.textContent = `${entry.type === 'in' ? 'Clocked in' : 'Clocked out'} at ${entry.timestamp}`;
+                historyList.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>
